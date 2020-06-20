@@ -1,0 +1,14 @@
+axes.titlesize : 21
+axes.labelsize : 21
+xtick.labelsize : 20
+ytick.labelsize : 20
+legend.fontsize: 20
+mathtext.fontset : stixsans
+font.size : 21.0
+savefig.pad_inches : 0
+font.family        : serif
+font.serif         : Times, Palatino, New Century Schoolbook, Bookman, Computer Modern Roman
+font.sans-serif    : Helvetica, Avant Garde, Computer Modern Sans serif
+font.cursive       : Zapf Chancery
+font.monospace     : Courier, Computer Modern Typewriter
+text.usetex        : true

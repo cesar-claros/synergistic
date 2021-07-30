@@ -39,7 +39,10 @@ class lossEvaluation():
             loss = np.abs(self.y_hat-self.y)
         elif norm == 'l2':
             loss = np.power(self.y_hat-self.y,2)
+        elif norm == 'res':
+            loss = self.y - self.y_hat
         return loss
+
 
 class critEvaluation():
     def __init__(self, norm='l01', direction='further'):
@@ -136,9 +139,6 @@ class critEvaluation():
         return table_test
     
 
-        
-
-
 class gaussianProcess():
     def __init__(self, X_train, L_train, kernel):
         self.X_train = X_train
@@ -217,6 +217,7 @@ class gaussianProcess():
 
         return gpr_mean_pred, gpr_var_pred
 
+
 class signaling():
     def __init__(self, norm='l01'):
         # Hyperparameters definition
@@ -246,15 +247,21 @@ class signaling():
             k = gpytorch.kernels.ScaleKernel(gpytorch.kernels.MaternKernel(nu=0.5,ard_num_dims=X_train.shape[1]))
         elif kernel == 'RBF':
             k = gpytorch.kernels.ScaleKernel(gpytorch.kernels.RBFKernel(ard_num_dims=X_train.shape[1]))
-        # elif self.kernel == 'eRBF':
-        #     dims = list(range(0,self.X_train.shape[1]))
-        #     k_x = gpflow.kernels.Exponential(
-        #             lengthscales=[0.1]*(np.size(self.X_train,1)-1), \
-        #                 active_dims=dims[:-1])
-        #     k_y = gpflow.kernels.SquaredExponential(
-        #             lengthscales=0.1,\
-        #                 active_dims=[dims[-1]])
-        #     k = k_x + k_y
+        elif kernel == 'eRBF':
+        # RBFKernel(active_dims=torch.tensor([1])) + RBFKernel(active_dims=torch.tensor([2]))
+            dims = list(range(0,X_train.shape[1]))
+            print(dims)
+            k_x = gpytorch.kernels.ScaleKernel(
+                gpytorch.kernels.MaternKernel(nu=0.5, ard_num_dims=len(dims[:-1]), active_dims=dims[:-1]))
+            k_y = gpytorch.kernels.ScaleKernel(
+                gpytorch.kernels.RBFKernel(ard_num_dims=len(dims[-1]), active_dims=dims[-1]))
+            # k_x = gpflow.kernels.Exponential(
+            #         lengthscales=[0.1]*(np.size(self.X_train,1)-1), \
+            #             active_dims=dims[:-1])
+            # k_y = gpflow.kernels.SquaredExponential(
+                    # lengthscales=0.1,\
+                        # active_dims=[dims[-1]])
+            k = k_x + k_y
         # elif self.kernel == 'exCombined':
         #     dims = list(range(0,self.X_train.shape[1]))
         #     k_x = gpflow.kernels.Exponential(
@@ -476,5 +483,159 @@ class signaling():
         return table_test
 
 
+class patching():
+    def __init__(self, norm='res'):
+        self.norm = norm
+        self.gpr = None
+    
+    def fit(self, X_train, y_train, y_hat_train, kernel, n_iter=50, lr=0.1):
+        # Fit signaling function based on training set
+        L_train = lossEvaluation(y_train, y_hat_train).getLoss(self.norm)
+        
+        if kernel == 'exponential':
+            k = gpytorch.kernels.ScaleKernel(gpytorch.kernels.MaternKernel(nu=0.5,ard_num_dims=X_train.shape[1]))
+        elif kernel == 'RBF':
+            k = gpytorch.kernels.ScaleKernel(gpytorch.kernels.RBFKernel(ard_num_dims=X_train.shape[1]))
+        elif kernel == 'eRBF':
+            dims = list(range(0,X_train.shape[1]))
+            # print(dims)
+            k_x = gpytorch.kernels.ScaleKernel(
+                gpytorch.kernels.MaternKernel(nu=0.5, ard_num_dims=len(dims[:-1]), active_dims=dims[:-1]))
+            k_y = gpytorch.kernels.ScaleKernel(
+                gpytorch.kernels.RBFKernel(ard_num_dims=len([dims[-1]]), active_dims=[dims[-1]]))
+            k = k_x + k_y
+        elif kernel == 'RBF+RBF':
+            dims = list(range(0,X_train.shape[1]))
+            # print(dims)
+            k_x = gpytorch.kernels.ScaleKernel(
+                gpytorch.kernels.RBFKernel(ard_num_dims=len(dims[:-1]), active_dims=dims[:-1]))
+            k_y = gpytorch.kernels.ScaleKernel(
+                gpytorch.kernels.RBFKernel(ard_num_dims=len([dims[-1]]), active_dims=[dims[-1]]))
+            k = k_x + k_y
+        
+        self.gpr = gaussianProcess(X_train, L_train, k)
+        self.gpr.fit(n_iter=n_iter,lr=lr)
+    
+    def evaluate(self, X_val, y_val, y_hat_val, rule_grid=[0, 1, 2, 3], rho_grid=[0.01, 0.05, 0.1, 0.15, 0.2]):
+        # Compute losses and predictions with GP
+        # ======================================
+        self.L_val = lossEvaluation(y_val, y_hat_val).getLoss(self.norm)
+        self.gpr_mean_val, self.gpr_var_val = self.gpr.predict(X_val)
+        # Table rows
+        #==========
+        rule_tab = []
+        rho_tab = []
+        error_val_tab = []
+        cum_L_val_tab = []
+        reduction_val_tab = []
+        eta_tab = []
+        pvalue_tab = []
+        check_tab = []
 
-#%%
+        if self.gpr_mean_val.ndim > 1:
+            self.gpr_mean_val = self.gpr_mean_val.numpy().ravel()
+        if self.gpr_var_val.ndim > 1:
+            self.gpr_var_val = self.gpr_var_val.numpy().ravel()
+
+        N_val = self.gpr_mean_val.shape[0]
+        rule_grid = np.array(rule_grid).reshape(-1,1)
+        for rho in rho_grid:
+            # enough samples for user's budget?
+            idx_rho = int(np.floor(rho*N_val))
+            if idx_rho==0:
+                continue # Not enough
+            
+            f_val = self.gpr_mean_val.reshape(1,-1) + rule_grid@np.sqrt(self.gpr_var_val.reshape(1,-1))
+            f_val_sorted = np.flip(np.sort(f_val, axis=1), axis=1)
+            η_grid = f_val_sorted[:,idx_rho].reshape(-1,1)
+            L_val_mat = np.tile(self.L_val, (f_val.shape[0],1))
+            sumL_val = np.sum(L_val_mat*(f_val<=η_grid), axis=1)/N_val
+            error_val = np.sum(L_val_mat*(f_val>η_grid), axis=1)/N_val
+            rho_val_check = np.sum(f_val>η_grid, axis=1)/N_val
+            assert(np.all(rho_val_check<=rho))
+
+            sortL_val = np.sort(self.L_val, axis=0)
+            sortL_val_mat = np.tile(sortL_val, (f_val.shape[0],1))
+            cumL_val = np.flip(np.cumsum(sortL_val_mat, axis=1)) / N_val
+            # error_val = cumL_val[:,0]-sumL_val
+            red_val = error_val/cumL_val[:,0]
+ 
+            # Pick best rule here, and evaluate statistics
+            best_idx = np.argmin(sumL_val)
+            # now using only rule 
+            rule = rule_grid[best_idx][0] 
+            η = η_grid[best_idx][0]
+            check = rho_val_check[best_idx]
+            
+            # Validation table
+            # ------------------------
+            best_f_val = f_val[best_idx,:]
+            rho_val = rho
+            best_error_val = error_val[best_idx]
+            best_sumL_val = sumL_val[best_idx]
+            best_red_val = red_val[best_idx]
+
+            # Mann-Whitney test
+            # -----------------
+            if len(self.L_val[best_f_val>η])>0 and np.sum(self.L_val[best_f_val<=η]>0):
+                _, p_value = stats.mannwhitneyu(self.L_val[best_f_val<=η], self.L_val[best_f_val>η], alternative='less', use_continuity=True)
+            else:
+                p_value = -1
+
+            # Store table
+            # -----------
+            rule_tab.append(rule)
+            # -----------------
+            rho_tab.append(rho_val)
+            error_val_tab.append(best_error_val)
+            cum_L_val_tab.append(best_sumL_val)
+            reduction_val_tab.append(best_red_val*100)
+            # -----------------
+            eta_tab.append(η)
+            # -----------------
+            pvalue_tab.append(p_value)
+            check_tab.append(check)
+        
+        table_val = pd.DataFrame({
+            'rule':rule_tab,\
+            #---------------- 
+            'rho_user':rho_tab, \
+                'error_val':np.around(error_val_tab,decimals=4),\
+                    'L_val':np.around(cum_L_val_tab,decimals=4),\
+                        '%reduction_val':np.around(reduction_val_tab,decimals=2),\
+            #----------------
+            'eta':eta_tab,\
+            'p_value':pvalue_tab,\
+            'check':check_tab
+        })
+        return table_val
+    
+    def test(self, X_test, y_test, y_hat_test, rule, eta):
+        self.gpr_mean_test, self.gpr_var_test = self.gpr.predict(X_test)
+        self.L_test = lossEvaluation(y_test, y_hat_test).getLoss(self.norm)
+        if self.gpr_mean_test.ndim > 1:
+            self.gpr_mean_test = self.gpr_mean_test.numpy().ravel()
+        if self.gpr_var_test.ndim > 1:
+            self.gpr_var_test = self.gpr_var_test.numpy().ravel()
+        rule = rule.reshape(-1,1)
+        eta = eta.reshape(-1,1)
+        N_test = self.gpr_mean_test.shape[0]
+
+        f_test = self.gpr_mean_test.reshape(1,-1) + rule@np.sqrt(self.gpr_var_test.reshape(1,-1))
+        L_test_mat = np.tile(self.L_test, (f_test.shape[0],1))
+
+        sortL_test = np.sort(self.L_test, axis=0)
+        sortL_test_mat = np.tile(sortL_test, (f_test.shape[0],1))
+        sumL_test = np.sum(L_test_mat*(f_test<=eta), axis=1) / N_test
+        rho_test = np.sum(f_test>eta, axis=1)/N_test
+        cumL_test = np.flip(np.cumsum(sortL_test_mat, axis=1)) / N_test
+        error_test = cumL_test[:,0]-sumL_test
+        red_test = (cumL_test[:,0]-sumL_test)/cumL_test[:,0]
+
+        table_test = pd.DataFrame({
+            'budget':np.around(rho_test, decimals=2), \
+                'error_test':np.around(error_test, decimals=4),\
+                    'L_test':np.around(sumL_test,decimals=4), \
+                        '%reduction_test':np.around(red_test*100,decimals=2)
+        })
+        return table_test

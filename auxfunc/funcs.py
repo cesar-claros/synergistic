@@ -273,8 +273,8 @@ class signaling():
             total_wrong_val_tab.append(total_wrong_val)
         
         table_val = pd.DataFrame({
-            'rule':rule_tab,\
             'rho_user':rho_tab, \
+            'rule':rule_tab,\
             #----------------
             'corrected_val':np.around(corrected_val_tab,decimals=2),\
             'queries_val':queries_val_tab,\

@@ -8,6 +8,62 @@ import gpytorch
 import pandas as pd
 from scipy import stats
 from datetime import datetime
+import urllib.request
+
+ts_code  = 'https://raw.githubusercontent.com/google/TrustScore/master/trustscore.py'
+ts_req     = urllib.request.urlopen(ts_code)
+read_req = ts_req.read()
+exec(read_req)
+
+# Trust score adaptation for python3 (xrange)
+class trust_score(TrustScore):
+    def __init__(self,k=10, alpha=0., filtering="none", min_dist=1e-12):
+        super().__init__(k,alpha,filtering,min_dist)
+    def fit(self, X, y):
+      """Initialize trust score precomputations with training data.
+      WARNING: assumes that the labels are 0-indexed (i.e.
+      0, 1,..., n_labels-1).
+      Args:
+      X: an array of sample points.
+      y: corresponding labels.
+      """
+      self.n_labels = np.max(y) + 1
+      self.kdtrees = [None] * self.n_labels
+      if self.filtering == "uncertainty":
+        X_filtered, y_filtered = self.filter_by_uncertainty(X, y)
+      for label in range(self.n_labels):
+        if self.filtering == "none":
+          X_to_use = X[np.where(y == label)[0]]
+          self.kdtrees[label] = KDTree(X_to_use)
+        elif self.filtering == "density":
+          X_to_use = self.filter_by_density(X[np.where(y == label)[0]])
+          self.kdtrees[label] = KDTree(X_to_use)
+        elif self.filtering == "uncertainty":
+          X_to_use = X_filtered[np.where(y_filtered == label)[0]]
+          self.kdtrees[label] = KDTree(X_to_use)
+
+        if len(X_to_use) == 0:
+          print("Filtered too much or missing examples from a label! Please lower alpha or check data.")
+
+    def get_score(self, X, y_pred):
+      """Compute the trust scores.
+      Given a set of points, determines the distance to each class.
+      Args:
+      X: an array of sample points.
+      y_pred: The predicted labels for these points.
+      Returns:
+      The trust score, which is ratio of distance to closest class that was not
+      the predicted class to the distance to the predicted class.
+      """
+      d = np.tile(None, (X.shape[0], self.n_labels))
+      for label_idx in range(self.n_labels):
+        d[:, label_idx] = self.kdtrees[label_idx].query(X, k=2)[0][:, -1]
+
+      sorted_d = np.sort(d, axis=1)
+      d_to_pred = d[range(d.shape[0]), y_pred]
+      d_to_closest_not_pred = np.where(sorted_d[:, 0] != d_to_pred,
+                                      sorted_d[:, 0], sorted_d[:, 1])
+      return d_to_closest_not_pred / (d_to_pred + self.min_dist)
 
 class lossEvaluation():
     def __init__(self, y, y_hat):

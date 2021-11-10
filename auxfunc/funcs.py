@@ -9,7 +9,7 @@ import pandas as pd
 from scipy import stats
 from datetime import datetime
 import urllib.request
-from trustscore import TrustScore
+from .trustscore import TrustScore
 
 # ts_code  = 'https://raw.githubusercontent.com/google/TrustScore/master/trustscore.py'
 # ts_req     = urllib.request.urlopen(ts_code)

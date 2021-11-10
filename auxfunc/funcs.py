@@ -9,11 +9,12 @@ import pandas as pd
 from scipy import stats
 from datetime import datetime
 import urllib.request
+from alibi.confidence import TrustScore
 
-ts_code  = 'https://raw.githubusercontent.com/google/TrustScore/master/trustscore.py'
-ts_req     = urllib.request.urlopen(ts_code)
-read_req = ts_req.read()
-exec(read_req)
+# ts_code  = 'https://raw.githubusercontent.com/google/TrustScore/master/trustscore.py'
+# ts_req     = urllib.request.urlopen(ts_code)
+# read_req = ts_req.read()
+# exec(read_req)
 
 # Trust score adaptation for python3 (xrange)
 class trust_score(TrustScore):

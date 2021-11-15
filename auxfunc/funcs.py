@@ -9,11 +9,12 @@ import pandas as pd
 from scipy import stats
 from datetime import datetime
 import urllib.request
+from .trustscore import TrustScore
 
-ts_code  = 'https://raw.githubusercontent.com/google/TrustScore/master/trustscore.py'
-ts_req     = urllib.request.urlopen(ts_code)
-read_req = ts_req.read()
-exec(read_req)
+# ts_code  = 'https://raw.githubusercontent.com/google/TrustScore/master/trustscore.py'
+# ts_req     = urllib.request.urlopen(ts_code)
+# read_req = ts_req.read()
+# exec(read_req)
 
 # Trust score adaptation for python3 (xrange)
 class trust_score(TrustScore):
@@ -329,8 +330,8 @@ class signaling():
             total_wrong_val_tab.append(total_wrong_val)
         
         table_val = pd.DataFrame({
-            'rho_user':rho_tab, \
             'rule':rule_tab,\
+            'rho_user':rho_tab, \
             #----------------
             'corrected_val':np.around(corrected_val_tab,decimals=2),\
             'queries_val':queries_val_tab,\

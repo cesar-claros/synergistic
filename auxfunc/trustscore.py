@@ -88,7 +88,7 @@ class TrustScore(object):
         X_keep, Y_keep = X[keep_id, :], Y[keep_id]
         return X_keep, Y_keep
 
-    def fit(self, X: np.ndarray, Y: np.ndarray, classes: int = None) -> None:
+    def fit(self, X: np.ndarray, Y: np.ndarray, classes: int = None, set_classes: np.ndarray = None) -> None:
         """
         Build KDTrees for each prediction class.
         Parameters
@@ -103,6 +103,7 @@ class TrustScore(object):
         self.classes = classes if classes is not None else Y.shape[1]
         self.kdtrees = [None] * self.classes  # type: Any
         self.X_kdtree = [None] * self.classes  # type: Any
+        self.set_classes = set_classes if set_classes is not None else range(self.classes)
 
         # KDTree and kNeighborsClassifier need 2D data
         if len(X.shape) > 2:
@@ -117,7 +118,8 @@ class TrustScore(object):
         if self.filter == 'probability_knn':
             X_filter, Y_filter = self.filter_by_probability_knn(X, Y)
 
-        for c in range(self.classes):
+        for c in self.set_classes:
+#         for c in np.unique(Y, return_counts=False):
 
             if self.filter is None:
                 X_fit = X[np.where(Y == c)[0]]

@@ -88,7 +88,7 @@ class TrustScore(object):
         X_keep, Y_keep = X[keep_id, :], Y[keep_id]
         return X_keep, Y_keep
 
-    def fit(self, X: np.ndarray, Y: np.ndarray, classes: int = None, set_classes: np.ndarray = None) -> None:
+    def fit(self, X: np.ndarray, Y: np.ndarray, classes: int = None) -> None:
         """
         Build KDTrees for each prediction class.
         Parameters
@@ -103,7 +103,6 @@ class TrustScore(object):
         self.classes = classes if classes is not None else Y.shape[1]
         self.kdtrees = [None] * self.classes  # type: Any
         self.X_kdtree = [None] * self.classes  # type: Any
-        self.set_classes = set_classes if set_classes is not None else range(self.classes)
 
         # KDTree and kNeighborsClassifier need 2D data
         if len(X.shape) > 2:
@@ -118,10 +117,8 @@ class TrustScore(object):
         if self.filter == 'probability_knn':
             X_filter, Y_filter = self.filter_by_probability_knn(X, Y)
             
-        counter = 0
-        for c in self.set_classes:
-#         for c in np.unique(Y, return_counts=False):
 
+        for c in range(self.classes):
             if self.filter is None:
                 X_fit = X[np.where(Y == c)[0]]
             elif self.filter == 'distance_knn':
@@ -135,9 +132,9 @@ class TrustScore(object):
             elif no_x_fit:
                 logger.warning('Filtered all the instances for class %s. Lower alpha or check data.', c)
 
-            self.kdtrees[counter] = KDTree(X_fit, leaf_size=self.leaf_size, metric=self.metric)  # build KDTree for class c
-            self.X_kdtree[counter] = X_fit
-            counter = counter+1
+            self.kdtrees[c] = KDTree(X_fit, leaf_size=self.leaf_size, metric=self.metric)  # build KDTree for class c
+            self.X_kdtree[c] = X_fit
+            
 
     def score(self, X: np.ndarray, Y: np.ndarray, k: int = 2, dist_type: str = 'point') \
             -> Tuple[np.ndarray, np.ndarray]:
